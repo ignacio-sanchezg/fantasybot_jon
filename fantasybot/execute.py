@@ -43,11 +43,21 @@ def plan_bids(client, league_id, team, ops=None):
     money = team["teamMoney"]
     if ops is None:
         ops = _system_flips(client, league_id)
-    already = state.load_bids()
+    # The live market is the truth about what already has money on it, not the local
+    # file. The file only remembers THIS bot's bids: anything placed from the app or
+    # by hand is invisible to it, and the bot re-proposes players that already carry
+    # a bid. Reading `bid`/`offer` off each listing catches them all.
+    already = set(state.load_bids())
+    try:
+        for el in client.market(league_id):
+            if el.get("bid") or el.get("offer"):
+                already.add(str(el.get("id")))
+    except Exception:
+        pass          # without the market, the local file is still better than nothing
     plan, committed = [], 0
     for o in ops:
-        if o["market_id"] in already:
-            continue  # we already have a bid
+        if str(o["market_id"]) in already:
+            continue  # money is already on that player
         if committed + o["buy_price"] > money:
             continue  # doesn't fit in the balance
         plan.append({"market_id": o["market_id"], "nombre": o["nombre"],
