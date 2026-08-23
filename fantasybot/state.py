@@ -109,10 +109,19 @@ def _next_id(tasks):
 
 
 def add_task(text: str, due=None, key=None) -> dict:
-    """Add a task. `key` prevents duplicates (same key = not repeated)."""
+    """Add a task. `key` prevents duplicates (same key = not repeated).
+
+    A re-added key REFRESHES text and due date: a task's identity is its key, but
+    its content follows the world — when a target's acquisition route changes
+    (clause -> open sale), keeping the old wording pinned a stale price and a
+    stale deadline on screen."""
     tasks = load_tasks()
     if key and any(t.get("key") == key for t in tasks):
-        return next(t for t in tasks if t.get("key") == key)
+        task = next(t for t in tasks if t.get("key") == key)
+        if task.get("text") != text or task.get("due") != due:
+            task["text"], task["due"] = text, due
+            save_tasks(tasks)
+        return task
     task = {"id": _next_id(tasks), "text": text, "due": due, "key": key,
             "done": False, "created": int(time.time())}
     tasks.append(task)

@@ -86,3 +86,31 @@ class ClauseTargetsFlagTheCheaperRoute(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReviewFeedbackRegressions(unittest.TestCase):
+    """The three review findings on this PR, frozen as tests."""
+
+    def test_venta_alcanzable_con_clausula_impagable(self):
+        # An affordable open sale must surface even when the clause is out of reach.
+        el = _keeper("on_sale", 2_700_000)
+        el["playerTeam"]["buyoutClause"] = 900_000_000   # nadie paga eso
+        with mock.patch.object(agent.needs_mod, "gaps", lambda t: ["POR"]):
+            targets = agent.clause_targets([el], _TEAM, {})
+        self.assertEqual(len(targets), 1)
+        self.assertTrue(targets[0]["cheaper_via_bid"])
+
+    def test_add_task_refresca_texto_y_fecha_con_la_misma_clave(self):
+        import os, tempfile
+        from fantasybot import state
+        old = state.TASKS_PATH
+        state.TASKS_PATH = os.path.join(tempfile.mkdtemp(), "tasks.json")
+        try:
+            state.add_task("Buyout X for 4,500,000", due="2026-09-01", key="clause:x")
+            t = state.add_task("Bid for X: ON SALE at 2,700,000",
+                               due="2026-08-25", key="clause:x")
+            self.assertEqual(t["text"], "Bid for X: ON SALE at 2,700,000")
+            self.assertEqual(t["due"], "2026-08-25")
+            self.assertEqual(len(state.load_tasks()), 1)   # misma tarea, no otra
+        finally:
+            state.TASKS_PATH = old

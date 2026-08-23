@@ -58,19 +58,24 @@ def clause_targets(market, team, prob_index):
         if pm["id"] in owned:
             continue
         pos = POS.get(pm.get("positionId"))
+        if pos not in gap_positions:
+            continue
         pt = el.get("playerTeam", {})
         clause, unlock = pt.get("buyoutClause"), pt.get("buyoutClauseLockedEndTime")
-        if not (clause and unlock and pos in gap_positions and clause <= money):
+        # If his owner already has him ON SALE, bidding is the cheaper way in: the
+        # clause is a ~1.67x premium and it is locked for days, while the sale is open
+        # now and starts at his value. The sale is a DOOR OF ITS OWN: gating on an
+        # affordable clause first priced reachable listings out of the report just
+        # because their (irrelevant) clause was rich.
+        on_sale = el.get("salePrice") if el.get("status") == "on_sale" else None
+        via_clausula = bool(clause and unlock and clause <= money)
+        via_puja = bool(on_sale and on_sale <= money)
+        if not (via_clausula or via_puja):
             continue
         info = match_name(pm.get("nickname", ""), pm.get("name", ""), prob_index)
         prob = info.get("prob") if info else None
         if prob is not None and prob < MIN_CLAUSE_PROB:
-            continue  # benchwarmer: a buyout on him is wasted money, don't recommend it
-        # If his owner already has him ON SALE, bidding is the cheaper way in: the
-        # clause is a ~1.67x premium and it is locked for days, while the sale is open
-        # now and starts at his value. Recommending the clause without checking this
-        # is how you end up paying 4.5M for a keeper listed at 2.7M.
-        on_sale = el.get("salePrice") if el.get("status") == "on_sale" else None
+            continue  # benchwarmer: signing him by any route is wasted money
         targets.append({
             "nombre": pm.get("nickname") or pm.get("name"),
             "player_id": pm["id"],
@@ -83,8 +88,10 @@ def clause_targets(market, team, prob_index):
             "market_id": el.get("id") if on_sale else None,
             "sale_price": on_sale,
             "sale_expires": el.get("expirationDate") if on_sale else None,
-            "cheaper_via_bid": bool(on_sale and on_sale < clause),
-            "saving_vs_clause": (clause - on_sale) if (on_sale and on_sale < clause) else 0,
+            "cheaper_via_bid": bool(on_sale and via_puja
+                                    and (not via_clausula or on_sale < clause)),
+            "saving_vs_clause": ((clause - on_sale)
+                                 if (clause and on_sale and on_sale < clause) else 0),
         })
     targets.sort(key=lambda t: (t["prob"] or 0), reverse=True)
     return targets
@@ -212,6 +219,9 @@ def review(client, days_to_matchday=None):
                 "message": "Market closes in 5 min: review bids and needs.",
             })
     for t in targets:
+        if t.get("cheaper_via_bid"):
+            continue   # the recommended route is the OPEN SALE; a "prepare the
+                       # buyout" alarm for the same player contradicts the task
         dt = _parse(t["unlock"])
         if dt:
             reminders.append({
