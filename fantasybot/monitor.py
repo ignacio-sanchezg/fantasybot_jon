@@ -188,6 +188,16 @@ class _Server(http.server.ThreadingHTTPServer):
     allow_reuse_address = True
     run_mode = "agent"
 
+    def handle_error(self, request, client_address):
+        """A browser slamming a connection shut mid-request is Tuesday, not an
+        emergency: without this, every closed tab printed a full traceback to the
+        console and read like the bot had crashed. Real errors still print."""
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (ConnectionResetError, ConnectionAbortedError,
+                            BrokenPipeError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
+
 
 def serve(host=DEFAULT_HOST, port=DEFAULT_PORT, background=False, run_mode="agent"):
     """Starts the server. Returns (server, url). With background=True, non-blocking.
